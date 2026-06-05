@@ -1,0 +1,223 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+  DELETED
+}
+
+enum DeploymentType {
+  SELF_HOSTED
+  OFFICIAL_HOSTED
+}
+
+enum PlanType {
+  FREE
+  PRO
+  USAGE_BASED
+  SELF_HOSTED
+}
+
+enum EmotionMode {
+  HAPPY
+  ANGRY
+  SAD
+  MESSY
+}
+
+enum DiaryPrivacyLevel {
+  NORMAL
+  LOCKED
+}
+
+model UserAccount {
+  id             String         @id @default(cuid())
+  authUserId     String?        @unique
+  email          String?        @unique
+  username       String         @unique
+  passwordHash   String
+  displayName    String?
+  role           UserRole       @default(USER)
+  status         UserStatus     @default(ACTIVE)
+  deploymentType DeploymentType @default(SELF_HOSTED)
+  plan           PlanType       @default(SELF_HOSTED)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+
+  diaryEntries  DiaryEntry[]
+  chatSessions  ChatSession[]
+  subscriptions Subscription[]
+  usageRecords  UsageRecord[]
+  authUser      user?          @relation(fields: [authUserId], references: [id], onDelete: SetNull)
+}
+
+model user {
+  id              String   @id
+  name            String
+  email           String   @unique
+  emailVerified   Boolean  @default(false)
+  image           String?
+  username        String?  @unique
+  displayUsername String?
+  createdAt       DateTime
+  updatedAt       DateTime
+
+  accounts     account[]
+  profile      UserAccount?
+  sessions     session[]
+}
+
+model session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime
+  updatedAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  user user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime
+  updatedAt  DateTime
+
+  @@index([identifier])
+}
+
+model DiaryEntry {
+  id                 String            @id @default(cuid())
+  userId             String
+  date               DateTime
+  mode               EmotionMode
+  title              String?
+  diaryText          String
+  oneSentenceSummary String
+  structuredJson     Json
+  sourceSessionId    String?           @unique
+  rawConversation    Json              @default("[]")
+  userEdited         Boolean           @default(false)
+  privacyLevel       DiaryPrivacyLevel @default(NORMAL)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  deletedAt          DateTime?
+
+  user          UserAccount  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceSession ChatSession? @relation(fields: [sourceSessionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, date])
+  @@index([userId, deletedAt])
+}
+
+model ChatSession {
+  id        String   @id @default(cuid())
+  userId    String
+  mode      EmotionMode
+  status    String   @default("active")
+  stateJson Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user        UserAccount   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages    ChatMessage[]
+  diaryEntry  DiaryEntry?
+
+  @@index([userId, createdAt])
+}
+
+model ChatMessage {
+  id           String   @id @default(cuid())
+  sessionId    String
+  role         String
+  content      String
+  metadataJson Json?
+  createdAt    DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+}
+
+model AppSetting {
+  key       String   @id
+  valueJson Json
+  encrypted Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Subscription {
+  id                 String   @id @default(cuid())
+  userId             String
+  plan               PlanType
+  status             String
+  billingCycle       String?
+  includedAiCredits  Int      @default(0)
+  usedAiCredits      Int      @default(0)
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+}
+
+model UsageRecord {
+  id            String   @id @default(cuid())
+  userId        String
+  feature       String
+  provider      String
+  model         String
+  inputTokens   Int      @default(0)
+  outputTokens  Int      @default(0)
+  aiCredits     Int      @default(0)
+  estimatedCost Decimal?
+  currency      String?
+  createdAt     DateTime @default(now())
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}

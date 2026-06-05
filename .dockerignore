@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+.next
+**/.next
+.git
+.env
+.env.*
+data
+uploads
+backups
+*.log
+coverage
+dist
+build
