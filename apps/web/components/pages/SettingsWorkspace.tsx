@@ -1,258 +1,138 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { Download, KeyRound, Loader2, LogOut, Save, Server, ShieldCheck, Sparkles, UserRound, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import { Download, KeyRound, Server, Sparkles, UserRound, Users } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
-import { StatusPill } from "@/components/ui/StatusPill";
-import { fetchAiSettings, saveAiSettings, testAiSettings, type AiSettings } from "@/lib/ai-settings-api";
-import { signOut } from "@/lib/auth-api";
+import { AiSettingsPanel } from "@/components/settings/AiSettingsPanel";
+import { DataPrivacySettings } from "@/components/settings/DataPrivacySettings";
+import { InstanceStatusPanel } from "@/components/settings/InstanceStatusPanel";
+import { ProfileSettings } from "@/components/settings/ProfileSettings";
+import { UserManagementPanel } from "@/components/settings/UserManagementPanel";
+import type { SettingsContext, SettingsSectionId } from "@/components/settings/settings-types";
+import { useToast } from "@/components/toast/ToastProvider";
+import { fetchAiSettings, type AiSettings } from "@/lib/ai-settings-api";
+import { fetchMe, type MeStatus } from "@/lib/me-api";
 import { fetchSetupStatus, type SetupStatus } from "@/lib/setup-api";
+import { fetchUsers, type ManagedUser } from "@/lib/user-api";
 
-type MeStatus = {
-  account: {
-    displayName: string | null;
-    role: "ADMIN" | "USER";
-    status: string;
-    username: string;
-  } | null;
-  authenticated: boolean;
-};
+const baseSections: Array<{ id: SettingsSectionId; icon: ReactNode; label: string }> = [
+  { id: "profile", icon: <UserRound size={17} />, label: "个人设置" },
+  { id: "data", icon: <Download size={17} />, label: "数据与隐私" }
+];
+
+const adminSections: Array<{ id: SettingsSectionId; icon: ReactNode; label: string }> = [
+  { id: "ai", icon: <KeyRound size={17} />, label: "AI 配置" },
+  { id: "members", icon: <Users size={17} />, label: "成员管理" },
+  { id: "instance", icon: <Server size={17} />, label: "实例状态" }
+];
 
 export function SettingsWorkspace() {
-  const router = useRouter();
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [me, setMe] = useState<MeStatus | null>(null);
   const [aiSettings, setAiSettings] = useState<AiSettings | null>(null);
-  const [aiBaseUrl, setAiBaseUrl] = useState("");
-  const [aiModel, setAiModel] = useState("");
-  const [aiKey, setAiKey] = useState("");
-  const [aiMessage, setAiMessage] = useState("");
-  const [aiBusy, setAiBusy] = useState<"save" | "test" | null>(null);
+  const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>("profile");
   const [loading, setLoading] = useState(true);
+  const { showToast } = useToast();
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadStatus() {
-      const [nextStatus, nextMe, nextAiSettings] = await Promise.all([
-        fetchSetupStatus(),
-        fetch("/api/me", { cache: "no-store" }).then((response) => response.json() as Promise<MeStatus>),
-        fetchAiSettings()
-      ]);
-      if (!cancelled) setStatus(nextStatus);
-      if (!cancelled) setMe(nextMe);
-      if (!cancelled) {
-        setAiSettings(nextAiSettings);
-        setAiBaseUrl(nextAiSettings.baseUrl);
-        setAiModel(nextAiSettings.model);
+      const [nextStatus, nextMe, nextAiSettings] = await Promise.all([fetchSetupStatus(), fetchMe(), fetchAiSettings()]);
+      if (cancelled) return;
+
+      setStatus(nextStatus);
+      setMe(nextMe);
+      setAiSettings(nextAiSettings);
+
+      if (nextMe.account?.role === "ADMIN") {
+        setManagedUsers(await fetchUsers());
       }
-      if (!cancelled) setLoading(false);
     }
 
-    void loadStatus().catch(() => {
-      if (!cancelled) {
-        setStatus({
-          database: "error",
-          initialized: false,
-          hasAdmin: false,
-          instanceName: "",
-          error: "无法读取实例状态"
-        });
-        setLoading(false);
-      }
-    });
+    void loadStatus()
+      .catch((cause) => {
+        if (!cancelled) {
+          showToast({ message: cause instanceof Error ? cause.message : "无法读取设置", type: "error" });
+          setStatus({
+            database: "error",
+            error: "无法读取实例状态",
+            hasAdmin: false,
+            initialized: false,
+            instanceName: ""
+          });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  async function logout() {
-    await signOut();
-    router.push("/login");
-    router.refresh();
-  }
-
-  async function saveAiConfig(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setAiBusy("save");
-    setAiMessage("");
-
-    try {
-      const nextSettings = await saveAiSettings({
-        apiKey: aiKey,
-        baseUrl: aiBaseUrl,
-        model: aiModel,
-        provider: "openai_compatible"
-      });
-      setAiSettings(nextSettings);
-      setAiKey("");
-      setAiMessage("AI 配置已保存。");
-    } catch (cause) {
-      setAiMessage(cause instanceof Error ? cause.message : "保存 AI 配置失败");
-    } finally {
-      setAiBusy(null);
-    }
-  }
-
-  async function testAiConfig() {
-    setAiBusy("test");
-    setAiMessage("");
-
-    try {
-      await testAiSettings({
-        apiKey: aiKey,
-        baseUrl: aiBaseUrl,
-        model: aiModel,
-        provider: "openai_compatible"
-      });
-      setAiMessage("AI 连接测试成功。");
-    } catch (cause) {
-      setAiMessage(cause instanceof Error ? cause.message : "AI 连接测试失败");
-    } finally {
-      setAiBusy(null);
-    }
-  }
+  }, [showToast]);
 
   const isAdmin = me?.account?.role === "ADMIN";
+  const sections = useMemo(() => (isAdmin ? [...baseSections, ...adminSections] : baseSections), [isAdmin]);
+  const context: SettingsContext = {
+    aiSettings,
+    loading,
+    managedUsers,
+    me,
+    setAiSettings,
+    setManagedUsers,
+    setMe,
+    setStatus,
+    status
+  };
 
   return (
     <AppShell>
-      <section className="mx-auto max-w-5xl rounded-[2rem] border border-white/80 bg-white/60 p-6 shadow-gentle backdrop-blur sm:p-8">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-sm text-dusk">实例设置</p>
-            <h2 className="mt-1 text-3xl font-semibold">把数据留在自己手里</h2>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-dusk">当前已经接入多用户账号。日记、日历和列表会按登录用户隔离保存，AI Key 和订阅配置会在后续阶段接入。</p>
-          </div>
-          <button className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-white/70 px-4 text-sm text-rosewood shadow-button" onClick={logout} type="button">
-            <LogOut size={17} />
-            登出
-          </button>
-        </div>
-
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <StatusPill icon={<Server size={17} />} label="数据库" value={loading ? "检查中" : status?.database === "connected" ? "已连接" : "不可用"} />
-          <StatusPill icon={<Users size={17} />} label="初始化" value={status?.initialized ? "已完成" : "未完成"} />
-          <StatusPill icon={<KeyRound size={17} />} label="AI Key" value={aiSettings?.configured ? "已配置" : "待配置"} />
-          <StatusPill icon={<Download size={17} />} label="导出" value="本地保存" />
-        </div>
-
-        <div className="mt-6 grid gap-4 lg:grid-cols-3">
-          <article className="rounded-[1.5rem] bg-paper/70 p-4">
-            <h3 className="font-medium">实例信息</h3>
-            <p className="mt-2 text-sm leading-6 text-dusk">实例名称：{status?.instanceName || "尚未设置"}。Docker 自部署、NAS 和云服务器部署会作为第一优先级。</p>
-          </article>
-          <article className="rounded-[1.5rem] bg-paper/70 p-4">
-            <div className="flex items-center gap-2">
-              <UserRound size={18} />
-              <h3 className="font-medium">当前账号</h3>
-            </div>
-            <p className="mt-2 text-sm leading-6 text-dusk">
-              {me?.account ? `${me.account.displayName || me.account.username} / ${me.account.role === "ADMIN" ? "管理员" : "普通用户"} / ${me.account.status}` : "正在读取账号状态..."}
-            </p>
-          </article>
-          <article className="rounded-[1.5rem] bg-paper/70 p-4">
-            <h3 className="font-medium">AI 配置</h3>
-            <p className="mt-2 text-sm leading-6 text-dusk">
-              {aiSettings?.configured ? `已配置 ${aiSettings.model}。聊天和整理会优先使用真实模型。` : "未配置时会继续使用本地原型回复，记录流程不会中断。"}
-            </p>
-          </article>
-          <article className="rounded-[1.5rem] bg-paper/70 p-4">
-            <h3 className="font-medium">账号与隐私</h3>
-            <p className="mt-2 text-sm leading-6 text-dusk">当前已有管理员：{status?.hasAdmin ? "是" : "否"}。新增用户接口已预留为邀请制，普通用户不能创建账号。</p>
-          </article>
-        </div>
-
-        <form className="mt-6 rounded-[1.5rem] border border-white/80 bg-paper/70 p-5" onSubmit={saveAiConfig}>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <section className="mx-auto max-w-5xl">
+        <div className="moodial-glass rounded-[2rem] p-6 sm:p-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <div className="flex items-center gap-2">
-                <Sparkles size={18} />
-                <h3 className="font-medium">AI 模型配置</h3>
-              </div>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-dusk">第一版支持 OpenAI-Compatible Chat Completions。API Key 只保存在服务端，并会加密写入数据库。</p>
+              <p className="inline-flex items-center gap-2 rounded-full bg-white/62 px-3 py-1 text-sm font-semibold text-[#875cff] shadow-button">
+                <Sparkles size={16} /> 我的空间
+              </p>
+              <h2 className="mt-4 text-4xl font-black text-[#11163d]">管理你的 Moodial 空间</h2>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-[#777299]">
+                这里保留首版真实需要的设置：个人资料、AI 称呼、数据导出、账号删除，以及管理员的模型、成员和实例管理。
+              </p>
             </div>
-            <span className="rounded-full bg-white/70 px-3 py-1 text-xs text-dusk">Provider: OpenAI-Compatible</span>
+            <div className="rounded-2xl bg-white/60 px-4 py-3 text-sm leading-6 text-[#6f688c] shadow-button">
+              {me?.account ? `${me.account.displayName || me.account.username} / ${me.account.role === "ADMIN" ? "管理员" : "普通用户"}` : "正在读取账号"}
+            </div>
           </div>
 
-          <div className="mt-5 grid gap-4 lg:grid-cols-3">
-            <Field disabled={!isAdmin} label="Base URL" onChange={setAiBaseUrl} placeholder="https://api.openai.com/v1" value={aiBaseUrl} />
-            <Field disabled={!isAdmin} label="Model" onChange={setAiModel} placeholder="gpt-4o-mini" value={aiModel} />
-            <Field
-              disabled={!isAdmin}
-              label={aiSettings?.hasApiKey ? "API Key（留空则不修改）" : "API Key"}
-              onChange={setAiKey}
-              placeholder={aiSettings?.hasApiKey ? "已保存，输入新 Key 可替换" : "sk-..."}
-              type="password"
-              value={aiKey}
-            />
+          <div className="mt-6 flex flex-wrap gap-2">
+            {sections.map((section) => (
+              <button
+                className={`inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm transition ${
+                  activeSection === section.id ? "moodial-button text-white" : "bg-white/70 text-[#6f61a0] shadow-button hover:text-[#875cff]"
+                }`}
+                key={section.id}
+                onClick={() => setActiveSection(section.id)}
+                type="button"
+              >
+                {section.icon}
+                {section.label}
+              </button>
+            ))}
           </div>
+        </div>
 
-          {aiMessage ? <p className="mt-4 rounded-2xl bg-white/70 px-4 py-3 text-sm text-dusk">{aiMessage}</p> : null}
-          {!isAdmin ? <p className="mt-4 rounded-2xl bg-blush px-4 py-3 text-sm text-clay">只有管理员可以修改实例级 AI 配置。</p> : null}
-
-          <div className="mt-5 flex flex-wrap gap-2">
-            <button
-              className="inline-flex h-10 items-center gap-2 rounded-full bg-rosewood px-4 text-sm font-medium text-white shadow-button disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={!isAdmin || Boolean(aiBusy)}
-              type="submit"
-            >
-              {aiBusy === "save" ? <Loader2 className="animate-spin" size={17} /> : <Save size={17} />}
-              保存配置
-            </button>
-            <button
-              className="inline-flex h-10 items-center gap-2 rounded-full bg-white/70 px-4 text-sm text-rosewood shadow-button disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={!isAdmin || Boolean(aiBusy) || !aiSettings?.configured}
-              onClick={testAiConfig}
-              type="button"
-            >
-              {aiBusy === "test" ? <Loader2 className="animate-spin" size={17} /> : <Sparkles size={17} />}
-              测试当前填写
-            </button>
-          </div>
-        </form>
-
-        <div className={`mt-6 rounded-[1.5rem] border p-4 ${status?.database === "error" ? "border-blush bg-blush/60" : "border-sage bg-sage/50"}`}>
-          <div className="flex items-start gap-3">
-            <ShieldCheck className={`mt-0.5 shrink-0 ${status?.database === "error" ? "text-rosewood" : "text-moss"}`} size={20} />
-            <p className={`text-sm leading-6 ${status?.database === "error" ? "text-rosewood" : "text-moss"}`}>
-              {status?.database === "error" ? status.error ?? "数据库暂不可用，请检查 DATABASE_URL 和 PostgreSQL 服务。" : "当前日记保存已经走 API + 数据库 + 登录用户隔离。未登录请求日记 API 会返回 401。"}
-            </p>
-          </div>
+        <div className="mt-5">
+          {loading ? <p className="rounded-[1.5rem] bg-white/60 p-8 text-sm text-[#777299]">正在读取设置...</p> : null}
+          {!loading && activeSection === "profile" ? <ProfileSettings context={context} /> : null}
+          {!loading && activeSection === "data" ? <DataPrivacySettings /> : null}
+          {!loading && isAdmin && activeSection === "ai" ? <AiSettingsPanel context={context} /> : null}
+          {!loading && isAdmin && activeSection === "members" ? <UserManagementPanel context={context} /> : null}
+          {!loading && isAdmin && activeSection === "instance" ? <InstanceStatusPanel context={context} /> : null}
         </div>
       </section>
     </AppShell>
-  );
-}
-
-function Field({
-  disabled,
-  label,
-  onChange,
-  placeholder,
-  type = "text",
-  value
-}: {
-  disabled: boolean;
-  label: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  type?: "password" | "text";
-  value: string;
-}) {
-  return (
-    <label className="grid gap-2 text-sm text-dusk">
-      {label}
-      <input
-        className="h-11 rounded-2xl border border-white/80 bg-white/80 px-4 text-ink outline-none transition focus:border-rosewood/30 disabled:cursor-not-allowed disabled:opacity-60"
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        type={type}
-        value={value}
-      />
-    </label>
   );
 }

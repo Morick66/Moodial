@@ -41,6 +41,7 @@ export function toListItem(entry: PrismaDiaryEntry): EntryListItem {
     title: entry.title ?? entry.oneSentenceSummary,
     summary: entry.oneSentenceSummary,
     tags: structured.tags,
+    privacyLevel: entry.privacyLevel === "LOCKED" ? "locked" : "normal",
     createdAt: entry.createdAt.toISOString(),
     updatedAt: entry.updatedAt.toISOString()
   };
@@ -88,6 +89,7 @@ export function parseEntryInput(body: unknown, partial = false): { error: string
   const date = typeof record.date === "string" ? record.date : undefined;
   const tags = Array.isArray(record.tags) ? record.tags.filter((item): item is string => typeof item === "string").slice(0, 12) : undefined;
   const rawConversation = Array.isArray(record.rawConversation) ? normalizeMessages(record.rawConversation) : undefined;
+  const privacyLevel = record.privacyLevel === "locked" || record.privacyLevel === "normal" ? record.privacyLevel : undefined;
 
   if (!partial && !mode) return { error: "请选择有效的情绪模式" };
   if (!partial && !diaryText) return { error: "日记正文不能为空" };
@@ -104,6 +106,7 @@ export function parseEntryInput(body: unknown, partial = false): { error: string
       ...(diaryText ? { diaryText } : {}),
       ...(summary ? { summary } : {}),
       ...(tags ? { tags } : {}),
+      ...(privacyLevel ? { privacyLevel } : {}),
       ...(typeof record.structured === "object" && record.structured ? { structured: record.structured as EntryWriteInput["structured"] } : {}),
       ...(rawConversation ? { rawConversation } : {})
     }

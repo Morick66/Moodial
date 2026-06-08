@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: moodial
+    container_name: ${APP_CONTAINER_NAME:-moodial}
     depends_on:
       postgres:
         condition: service_healthy
@@ -17,6 +17,7 @@ services:
     environment:
       NODE_ENV: production
       HOSTNAME: 0.0.0.0
+      APP_URL: ${APP_URL:-http://localhost:3000}
       DATABASE_URL: ${DATABASE_URL:-postgresql://jzmle:change-me@postgres:5432/jzmle?schema=public}
     volumes:
       - app_data:/app/data
@@ -24,7 +25,7 @@ services:
 
   postgres:
     image: postgres:17-alpine
-    container_name: moodial-postgres
+    container_name: ${POSTGRES_CONTAINER_NAME:-moodial-postgres}
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-jzmle}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}

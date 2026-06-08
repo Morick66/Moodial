@@ -32,3 +32,18 @@ export async function initializeInstance(input: {
 
   return body as SetupStatus;
 }
+
+export async function updateInstanceName(instanceName: string) {
+  const response = await fetch("/api/setup", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ instanceName })
+  });
+
+  const body = (await response.json()) as SetupStatus | { error: string };
+  if (!response.ok) {
+    throw new Error("error" in body ? body.error : "保存实例名称失败");
+  }
+
+  return body as SetupStatus;
+}

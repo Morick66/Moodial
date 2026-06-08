@@ -54,6 +54,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       ...(input.title !== undefined ? { title: input.title } : {}),
       ...(input.diaryText ? { diaryText: input.diaryText } : {}),
       ...(input.summary ? { oneSentenceSummary: input.summary } : {}),
+      ...(input.privacyLevel ? { privacyLevel: input.privacyLevel === "locked" ? "LOCKED" : "NORMAL" } : {}),
       ...(input.structured || input.tags ? { structuredJson: toPrismaJson(structured) } : {}),
       ...(input.rawConversation ? { rawConversation: toPrismaJson(input.rawConversation) } : {}),
       userEdited: true

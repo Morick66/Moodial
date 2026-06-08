@@ -6,6 +6,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "npm run dev -w apps/web",
+    "dev:local": "docker compose stop app && docker compose up -d postgres && env 'DATABASE_URL=postgresql://jzmle:change-me@localhost:5432/jzmle?schema=public' npm run db:deploy && env 'DATABASE_URL=postgresql://jzmle:change-me@localhost:5432/jzmle?schema=public' npm run dev",
     "build": "npm run build -w apps/web",
     "start": "npm run start -w apps/web",
     "lint": "npm run lint -w apps/web",
@@ -14,7 +15,8 @@
     "db:deploy": "npm run db:deploy -w packages/db",
     "db:migrate": "npm run db:migrate -w packages/db",
     "db:studio": "npm run db:studio -w packages/db",
-    "verify:diary-crud": "node scripts/verify-diary-crud.mjs"
+    "verify:diary-crud": "node scripts/verify-diary-crud.mjs",
+    "verify:docker-mvp": "node scripts/verify-docker-mvp.mjs"
   },
   "workspaces": [
     "apps/web",

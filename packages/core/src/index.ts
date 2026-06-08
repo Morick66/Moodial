@@ -73,6 +73,7 @@ export interface EntryListItem {
   title: string;
   summary: string;
   tags: string[];
+  privacyLevel: "normal" | "locked";
   createdAt: string;
   updatedAt: string;
 }
@@ -92,6 +93,7 @@ export interface EntryWriteInput {
   diaryText: string;
   summary: string;
   tags?: string[];
+  privacyLevel?: "normal" | "locked";
   structured?: Partial<DiaryStructuredData>;
   rawConversation?: ChatMessage[];
 }

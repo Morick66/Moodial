@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowRight, Loader2, LockKeyhole, ShieldCheck } from "lucide-react";
+import { useToast } from "@/components/toast/ToastProvider";
 import { signInWithUsername } from "@/lib/auth-api";
 
 export function LoginWorkspace() {
@@ -11,19 +12,18 @@ export function LoginWorkspace() {
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const { showToast } = useToast();
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
-    setError("");
 
     try {
       await signInWithUsername({ username, password });
       router.push("/");
       router.refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "登录失败");
+      showToast({ message: cause instanceof Error ? cause.message : "登录失败", type: "error" });
     } finally {
       setSubmitting(false);
     }
@@ -61,9 +61,6 @@ export function LoginWorkspace() {
               <Field label="用户名" onChange={setUsername} value={username} />
               <Field label="密码" onChange={setPassword} type="password" value={password} />
             </div>
-
-            {error ? <p className="mt-4 rounded-2xl bg-blush px-4 py-3 text-sm text-rosewood">{error}</p> : null}
-
             <button
               className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-rosewood px-5 text-sm font-medium text-white shadow-button disabled:cursor-not-allowed disabled:opacity-60"
               disabled={submitting}

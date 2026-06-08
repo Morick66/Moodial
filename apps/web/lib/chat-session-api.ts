@@ -1,10 +1,11 @@
 import type { ChatMessage, ChatSessionDetail, EntryDetail, EmotionModeId } from "@jzmle/core";
+import type { CompanionMode } from "@/lib/record-prefill";
 
-export async function createChatSession(mode: EmotionModeId) {
+export async function createChatSession(mode: EmotionModeId, companionMode?: CompanionMode) {
   const response = await fetch("/api/chat-sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode })
+    body: JSON.stringify({ companionMode, mode })
   });
   if (!response.ok) throw new Error(await readError(response, "无法开始记录"));
 

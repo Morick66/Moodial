@@ -6,9 +6,11 @@ import type { EntryListItem } from "@jzmle/core";
 import { CalendarDays, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { fetchEntries } from "@/lib/entry-api";
+import { fetchWeekSummary, type WeekSummary } from "@/lib/summary-api";
 
 export function CalendarWorkspace() {
   const [entries, setEntries] = useState<EntryListItem[]>([]);
+  const [weekSummary, setWeekSummary] = useState<WeekSummary | null>(null);
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(new Date()));
   const today = useMemo(() => new Date(), []);
   const todayKey = toDateKey(today);
@@ -16,8 +18,9 @@ export function CalendarWorkspace() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const nextEntries = await fetchEntries();
+      const [nextEntries, nextSummary] = await Promise.all([fetchEntries(), fetchWeekSummary()]);
       if (!cancelled) setEntries(nextEntries);
+      if (!cancelled) setWeekSummary(nextSummary);
     }
 
     void load();
@@ -51,14 +54,14 @@ export function CalendarWorkspace() {
   return (
     <AppShell>
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-5">
-        <div className="flex flex-col gap-4 rounded-[1.75rem] border border-white/80 bg-white/65 p-5 shadow-gentle backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <div className="moodial-glass flex flex-col gap-4 rounded-[1.75rem] p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rosewood text-white shadow-button">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#7b4dff] to-[#ff9fc8] text-white shadow-button">
               <CalendarDays size={25} />
             </div>
             <div>
-              <p className="text-sm text-dusk">日历回看</p>
-              <h2 className="mt-1 text-3xl font-semibold">
+              <p className="text-sm font-semibold text-[#875cff]">情绪日历</p>
+              <h2 className="mt-1 text-3xl font-black text-[#11163d]">
                 {visibleMonth.getFullYear()} 年 {visibleMonth.getMonth() + 1} 月
               </h2>
             </div>
@@ -67,8 +70,9 @@ export function CalendarWorkspace() {
           <div className="flex flex-wrap items-center gap-2">
             <MonthStat label="记录" value={`${monthlyEntryCount} 篇`} />
             <MonthStat label="天数" value={`${recordedDays} 天`} />
+            <MonthStat label="7 天" value={`${weekSummary?.entryCount ?? 0} 篇`} />
             <button
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-dusk shadow-button transition hover:text-rosewood"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-[#6f61a0] shadow-button transition hover:text-[#875cff]"
               onClick={() => changeMonth(-1)}
               title="上个月"
               type="button"
@@ -76,7 +80,7 @@ export function CalendarWorkspace() {
               <ChevronLeft size={18} />
             </button>
             <button
-              className="h-10 rounded-full bg-white/75 px-4 text-sm text-dusk shadow-button transition hover:text-rosewood disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-10 rounded-full bg-white/75 px-4 text-sm text-[#6f61a0] shadow-button transition hover:text-[#875cff] disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isCurrentMonth}
               onClick={() => setVisibleMonth(startOfMonth(new Date()))}
               type="button"
@@ -84,7 +88,7 @@ export function CalendarWorkspace() {
               今天
             </button>
             <button
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-dusk shadow-button transition hover:text-rosewood"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/75 text-[#6f61a0] shadow-button transition hover:text-[#875cff]"
               onClick={() => changeMonth(1)}
               title="下个月"
               type="button"
@@ -94,8 +98,8 @@ export function CalendarWorkspace() {
           </div>
         </div>
 
-        <div className="overflow-visible rounded-[1.75rem] border border-white/80 bg-white/70 p-3 shadow-gentle backdrop-blur sm:p-5">
-          <div className="grid grid-cols-7 gap-2 text-center text-xs font-medium text-dusk sm:text-sm">
+        <div className="moodial-glass overflow-visible rounded-[1.75rem] p-3 sm:p-5">
+          <div className="grid grid-cols-7 gap-2 text-center text-xs font-medium text-[#81799d] sm:text-sm">
             {["日", "一", "二", "三", "四", "五", "六"].map((weekday) => (
               <div className="py-2" key={weekday}>
                 {weekday}
@@ -111,24 +115,24 @@ export function CalendarWorkspace() {
                   <Link
                     className={`flex aspect-[1.05] min-h-[72px] flex-col items-start justify-between rounded-2xl border p-3 text-left transition sm:min-h-[104px] sm:p-4 ${
                     dayEntries.length > 0
-                      ? "border-rosewood/15 bg-gradient-to-br from-white to-sage/65 text-ink shadow-card hover:-translate-y-0.5 hover:shadow-soft"
-                      : "border-white/70 bg-paper/55 text-dusk/70 hover:bg-white/75"
-                  } ${isToday ? "ring-2 ring-rosewood/35" : ""}`}
+                      ? "border-[#eadfff] bg-gradient-to-br from-white to-[#fff1f8] text-ink shadow-card hover:-translate-y-0.5 hover:shadow-soft"
+                      : "border-white/70 bg-white/42 text-[#9189aa] hover:bg-white/75"
+                  } ${isToday ? "ring-2 ring-[#8b61ff]/45" : ""}`}
                     href={`/calendar/${dateKey}`}
                   >
                     <div className="flex w-full items-center justify-between gap-2">
-                      <span className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${isToday ? "bg-rosewood text-white" : "bg-white/70"}`}>
+                      <span className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${isToday ? "bg-[#875cff] text-white" : "bg-white/70"}`}>
                         {day}
                       </span>
-                      {dayEntries.length > 0 ? <Sparkles className="shrink-0 text-rosewood/70" size={16} /> : null}
+                      {dayEntries.length > 0 ? <Sparkles className="shrink-0 text-[#e979bb]" size={16} /> : null}
                     </div>
                     {dayEntries.length > 0 ? (
                       <div className="w-full min-w-0">
                         <p className="w-full truncate text-sm font-medium">{dayEntries[0].title}</p>
-                        <p className="mt-1 text-xs text-dusk">{dayEntries.length} 篇记录</p>
+                        <p className="mt-1 text-xs text-[#81799d]">{dayEntries.length} 篇记录</p>
                       </div>
                     ) : (
-                      <span className="text-xs text-dusk/45">{isToday ? "今天" : "未记录"}</span>
+                      <span className="text-xs text-[#9b93ad]">{isToday ? "今天" : "未记录"}</span>
                     )}
                   </Link>
                   {dayEntries.length > 0 ? <DayEntryPopover align={popoverAlign} entries={dayEntries} /> : null}
@@ -150,16 +154,16 @@ function DayEntryPopover({ align, entries }: { align: string; entries: EntryList
     <div
       className={`pointer-events-none absolute top-[calc(100%+0.5rem)] z-30 hidden w-72 rounded-2xl border border-white/90 bg-white/95 p-3 text-left shadow-soft backdrop-blur group-hover:block group-focus-within:block ${align}`}
     >
-      <p className="mb-2 px-1 text-xs text-dusk">当天记录</p>
+      <p className="mb-2 px-1 text-xs text-[#81799d]">当天记录</p>
       <div className="grid gap-2">
         {entries.map((entry) => (
           <Link
-            className="pointer-events-auto block rounded-xl bg-paper/70 px-3 py-2 transition hover:bg-sage/55"
+            className="pointer-events-auto block rounded-xl bg-[#fbf6ff] px-3 py-2 transition hover:bg-[#f0e8ff]"
             href={`/entries/${entry.id}`}
             key={entry.id}
           >
             <p className="truncate text-sm font-medium text-ink">{entry.title}</p>
-            <p className="mt-1 line-clamp-2 text-xs leading-5 text-dusk">{entry.summary}</p>
+            <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#81799d]">{entry.summary}</p>
           </Link>
         ))}
       </div>
@@ -170,8 +174,8 @@ function DayEntryPopover({ align, entries }: { align: string; entries: EntryList
 function MonthStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl bg-white/70 px-4 py-2 shadow-button">
-      <p className="text-[11px] text-dusk">{label}</p>
-      <p className="text-sm font-semibold">{value}</p>
+      <p className="text-[11px] text-[#81799d]">{label}</p>
+      <p className="text-sm font-semibold text-[#11163d]">{value}</p>
     </div>
   );
 }

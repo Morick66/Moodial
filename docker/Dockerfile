@@ -9,7 +9,9 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/db/package.json packages/db/package.json
 COPY packages/prompts/package.json packages/prompts/package.json
-RUN npm ci
+RUN npm --version && \
+    npm ping --registry=https://registry.npmjs.org/ --fetch-timeout=15000 && \
+    npm ci --no-audit --no-fund --foreground-scripts --fetch-timeout=30000 --fetch-retries=1 --loglevel=verbose
 
 FROM deps AS builder
 COPY . .

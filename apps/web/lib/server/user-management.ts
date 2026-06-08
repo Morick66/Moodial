@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 import { prisma } from "@jzmle/db";
+import type { Prisma } from "@prisma/client";
 
 export const LOCAL_OWNER_ID = "local-owner";
 
@@ -115,6 +116,30 @@ export async function migrateLocalOwnerDataToUser(userId: string) {
       }
     })
   ]);
+}
+
+export async function softDeleteUserData(userId: string, tx: Prisma.TransactionClient | typeof prisma = prisma) {
+  const deletedAt = new Date();
+
+  await tx.diaryEntry.updateMany({
+    where: { userId, deletedAt: null },
+    data: { deletedAt }
+  });
+  await tx.chatSession.updateMany({
+    where: { userId },
+    data: { status: "deleted" }
+  });
+  await tx.subscription.updateMany({
+    where: { userId },
+    data: { status: "deleted" }
+  });
+  await tx.userAccount.update({
+    where: { id: userId },
+    data: {
+      deletedAt,
+      status: "DELETED"
+    }
+  });
 }
 
 function normalizeUsername(value: string) {

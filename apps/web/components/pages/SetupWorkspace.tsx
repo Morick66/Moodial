@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowRight, Database, Loader2, ShieldCheck } from "lucide-react";
+import { useToast } from "@/components/toast/ToastProvider";
 import { initializeInstance, fetchSetupStatus, type SetupStatus } from "@/lib/setup-api";
 
 export function SetupWorkspace() {
@@ -14,7 +15,7 @@ export function SetupWorkspace() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const { showToast } = useToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -29,7 +30,7 @@ export function SetupWorkspace() {
 
     void loadStatus().catch((cause) => {
       if (!cancelled) {
-        setError(cause instanceof Error ? cause.message : "无法读取初始化状态");
+        showToast({ message: cause instanceof Error ? cause.message : "无法读取初始化状态", type: "error" });
         setLoading(false);
       }
     });
@@ -37,12 +38,11 @@ export function SetupWorkspace() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [showToast]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
-    setError("");
 
     try {
       const nextStatus = await initializeInstance({
@@ -54,7 +54,7 @@ export function SetupWorkspace() {
       setStatus(nextStatus);
       router.push("/login");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "初始化失败");
+      showToast({ message: cause instanceof Error ? cause.message : "初始化失败", type: "error" });
     } finally {
       setSubmitting(false);
     }
@@ -90,7 +90,6 @@ export function SetupWorkspace() {
             </div>
 
             {status?.initialized ? <p className="mt-4 rounded-2xl bg-sage/70 px-4 py-3 text-sm text-moss">实例已经初始化，请用管理员账号登录。</p> : null}
-            {error || status?.error ? <p className="mt-4 rounded-2xl bg-blush px-4 py-3 text-sm text-rosewood">{error || status?.error}</p> : null}
 
             <button
               className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-rosewood px-5 text-sm font-medium text-white shadow-button disabled:cursor-not-allowed disabled:opacity-60"

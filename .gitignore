@@ -6,6 +6,7 @@ node_modules/
 # build outputs
 dist/
 build/
+.tmp-*/
 .next/
 out/
 coverage/
@@ -33,6 +34,10 @@ backups/
 
 # system
 .DS_Store
+._*
+.AppleDouble
+**/._*
+**/.AppleDouble
 Thumbs.db
 
 # editor

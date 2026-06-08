@@ -11,12 +11,15 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const mode = parseEmotionMode(searchParams.get("mode"));
   const search = searchParams.get("search")?.trim();
+  const tag = searchParams.get("tag")?.trim();
+  const privacy = searchParams.get("privacy");
 
-  const entries = await prisma.diaryEntry.findMany({
+  let entries = await prisma.diaryEntry.findMany({
     where: {
       userId: account.id,
       deletedAt: null,
       ...(mode ? { mode: toPrismaMode(mode) } : {}),
+      ...(privacy === "locked" ? { privacyLevel: "LOCKED" as const } : privacy === "normal" ? { privacyLevel: "NORMAL" as const } : {}),
       ...(search
         ? {
             OR: [
@@ -29,6 +32,10 @@ export async function GET(request: Request) {
     },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }]
   });
+
+  if (tag) {
+    entries = entries.filter((entry) => toDetail(entry).tags.includes(tag));
+  }
 
   return NextResponse.json(entries.map(toListItem));
 }
@@ -53,6 +60,7 @@ export async function POST(request: Request) {
       title: input.title ?? input.summary,
       diaryText: input.diaryText,
       oneSentenceSummary: input.summary,
+      privacyLevel: input.privacyLevel === "locked" ? "LOCKED" : "NORMAL",
       structuredJson: toPrismaJson(structured),
       rawConversation: toPrismaJson(input.rawConversation ?? [])
     }

@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@jzmle/db";
 import { generateAssistantReply, streamAssistantReply } from "@/lib/server/ai-adapter";
 import { requireCurrentUserAccount } from "@/lib/server/current-user";
-import { buildSessionState, shouldSuggestSummarize, toChatMessage, toChatSessionDetail } from "@/lib/server/chat-session-mapper";
+import { buildSessionState, getSessionCompanionMode, shouldSuggestSummarize, toChatMessage, toChatSessionDetail } from "@/lib/server/chat-session-mapper";
 import { parseEmotionMode } from "@/lib/server/entry-mapper";
+import { classifySafety } from "@/lib/server/safety";
+import { getUserPreferences } from "@/lib/server/user-preferences";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -35,12 +37,84 @@ export async function POST(request: Request, context: RouteContext) {
   if (!mode) return NextResponse.json({ error: "会话模式异常" }, { status: 500 });
 
   const previousMessages = existing.messages.map(toChatMessage);
+  const companionMode = getSessionCompanionMode(existing);
   const pendingUserMessage = {
     id: "pending-user-message",
     role: "user" as const,
     content
   };
   const nextMessages = [...previousMessages, pendingUserMessage];
+  const safety = classifySafety(content, mode);
+
+  if (safety) {
+    const userMessage = await prisma.chatMessage.create({
+      data: {
+        sessionId: existing.id,
+        role: "user",
+        content
+      }
+    });
+    const assistantMessage = await prisma.chatMessage.create({
+      data: {
+        sessionId: existing.id,
+        role: "assistant",
+        content: safety.response,
+        metadataJson: { safetyFlag: safety.flag, source: "fallback", sourceNote: "安全边界回应" }
+      }
+    });
+    const userTurns = nextMessages.filter((message) => message.role === "user").length;
+    await prisma.chatSession.update({
+      where: { id: existing.id },
+      data: {
+        status: "ready_to_summarize",
+        stateJson: buildSessionState({
+          companionMode,
+          shouldSummarize: true,
+          source: "fallback",
+          structured: { safetyFlag: safety.flag },
+          userTurns
+        })
+      }
+    });
+
+    const session = await prisma.chatSession.findUniqueOrThrow({
+      where: { id: existing.id },
+      include: {
+        messages: {
+          orderBy: { createdAt: "asc" }
+        }
+      }
+    });
+
+    const payload = {
+      assistantMessage: toChatMessage(assistantMessage),
+      session: toChatSessionDetail(session),
+      source: "fallback" as const,
+      userMessage: toChatMessage(userMessage)
+    };
+
+    if (shouldStream) {
+      const encoder = new TextEncoder();
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(`${JSON.stringify({ type: "userMessage", userMessage: payload.userMessage })}\n`));
+            controller.enqueue(encoder.encode(`${JSON.stringify({ assistantMessage: payload.assistantMessage, session: payload.session, type: "done" })}\n`));
+            controller.close();
+          }
+        }),
+        {
+          headers: {
+            "Cache-Control": "no-cache, no-transform",
+            "Content-Type": "application/x-ndjson; charset=utf-8"
+          }
+        }
+      );
+    }
+
+    return NextResponse.json(payload);
+  }
+
   if (!shouldRespond) {
     const userMessage = await prisma.chatMessage.create({
       data: {
@@ -55,7 +129,7 @@ export async function POST(request: Request, context: RouteContext) {
       where: { id: existing.id },
       data: {
         status: "ready_to_summarize",
-        stateJson: buildSessionState({ shouldSummarize: true, source: "ai", userTurns })
+        stateJson: buildSessionState({ companionMode, shouldSummarize: true, source: "ai", userTurns })
       }
     });
 
@@ -75,7 +149,10 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   if (shouldStream) {
+    const preferences = await getUserPreferences(account.id);
     return streamChatMessageResponse({
+      aiDisplayName: preferences.aiDisplayName,
+      companionMode,
       content,
       existingId: existing.id,
       messages: nextMessages,
@@ -83,7 +160,8 @@ export async function POST(request: Request, context: RouteContext) {
     });
   }
 
-  const generated = await generateAssistantReply({ messages: nextMessages, mode }).catch((cause) => {
+  const preferences = await getUserPreferences(account.id);
+  const generated = await generateAssistantReply({ aiDisplayName: preferences.aiDisplayName, companionMode, messages: nextMessages, mode }).catch((cause) => {
     const message = cause instanceof Error ? cause.message : "AI 配置有问题或连接失败，请到设置中检查并测试 AI 配置。";
     return { error: message };
   });
@@ -113,7 +191,7 @@ export async function POST(request: Request, context: RouteContext) {
     where: { id: existing.id },
     data: {
       status: shouldSummarize ? "ready_to_summarize" : "active",
-      stateJson: buildSessionState({ shouldSummarize, source: generated.source, userTurns })
+      stateJson: buildSessionState({ companionMode, shouldSummarize, source: generated.source, userTurns })
     }
   });
 
@@ -134,7 +212,21 @@ export async function POST(request: Request, context: RouteContext) {
   });
 }
 
-function streamChatMessageResponse({ content, existingId, messages, mode }: { content: string; existingId: string; messages: ReturnType<typeof toChatMessage>[]; mode: NonNullable<ReturnType<typeof parseEmotionMode>> }) {
+function streamChatMessageResponse({
+  aiDisplayName,
+  companionMode,
+  content,
+  existingId,
+  messages,
+  mode
+}: {
+  aiDisplayName: string;
+  companionMode?: ReturnType<typeof getSessionCompanionMode>;
+  content: string;
+  existingId: string;
+  messages: ReturnType<typeof toChatMessage>[];
+  mode: NonNullable<ReturnType<typeof parseEmotionMode>>;
+}) {
   const encoder = new TextEncoder();
 
   return new Response(
@@ -156,7 +248,7 @@ function streamChatMessageResponse({ content, existingId, messages, mode }: { co
           });
           sendEvent({ type: "userMessage", userMessage: toChatMessage(userMessage) });
 
-          const stream = await streamAssistantReply({ messages, mode });
+          const stream = await streamAssistantReply({ aiDisplayName, companionMode, messages, mode });
           for await (const delta of stream) {
             assistantContent += delta;
             sendEvent({ delta, type: "delta" });
@@ -177,7 +269,7 @@ function streamChatMessageResponse({ content, existingId, messages, mode }: { co
             where: { id: existingId },
             data: {
               status: suggestSummarize ? "ready_to_summarize" : "active",
-              stateJson: buildSessionState({ shouldSummarize: suggestSummarize, source: "ai", userTurns })
+              stateJson: buildSessionState({ companionMode, shouldSummarize: suggestSummarize, source: "ai", userTurns })
             }
           });
 

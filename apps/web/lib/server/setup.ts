@@ -56,6 +56,24 @@ export async function createInitialSetup(input: {
   return getSetupStatus();
 }
 
+export async function updateInstanceName(input: { instanceName: string }) {
+  const instanceName = input.instanceName.trim().slice(0, 60);
+  if (!instanceName) throw new Error("请填写实例名称");
+
+  await prisma.appSetting.upsert({
+    where: { key: INSTANCE_NAME_SETTING_KEY },
+    update: {
+      valueJson: { name: instanceName }
+    },
+    create: {
+      key: INSTANCE_NAME_SETTING_KEY,
+      valueJson: { name: instanceName }
+    }
+  });
+
+  return getSetupStatus();
+}
+
 function readInstanceName(value: unknown) {
   if (!value || typeof value !== "object") return "";
   const name = (value as { name?: unknown }).name;

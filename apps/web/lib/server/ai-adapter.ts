@@ -1,6 +1,7 @@
 import type { ChatMessage, DiaryStructuredData, DraftDiary, EmotionModeId } from "@jzmle/core";
 import { diaryOutputPrompt, followUpPrompt, modePrompts, commonSystemPrompt } from "@jzmle/prompts";
 import { getAiSettingsPrivate } from "@/lib/server/ai-settings";
+import { companionModes, type CompanionMode } from "@/lib/record-prefill";
 
 const AI_REPLY_TIMEOUT_MS = 60000;
 const AI_DRAFT_TIMEOUT_MS = 120000;
@@ -21,7 +22,7 @@ export type AiDraftResult = {
   source: "ai";
 };
 
-export async function generateAssistantReply(input: { messages: ChatMessage[]; mode: EmotionModeId }): Promise<AiTextResult> {
+export async function generateAssistantReply(input: { aiDisplayName?: string; companionMode?: CompanionMode; messages: ChatMessage[]; mode: EmotionModeId }): Promise<AiTextResult> {
   const settings = await getAiSettingsPrivate().catch(() => null);
   if (!settings) throw new Error("AI 配置有问题：请先在设置中保存并测试 AI 配置。");
 
@@ -35,7 +36,7 @@ export async function generateAssistantReply(input: { messages: ChatMessage[]; m
   return { content: content.trim(), source: "ai" };
 }
 
-export async function streamAssistantReply(input: { messages: ChatMessage[]; mode: EmotionModeId }): Promise<AsyncGenerator<string>> {
+export async function streamAssistantReply(input: { aiDisplayName?: string; companionMode?: CompanionMode; messages: ChatMessage[]; mode: EmotionModeId }): Promise<AsyncGenerator<string>> {
   const settings = await getAiSettingsPrivate().catch(() => null);
   if (!settings) throw new Error("AI 配置有问题：请先在设置中保存并测试 AI 配置。");
 
@@ -47,7 +48,7 @@ export async function streamAssistantReply(input: { messages: ChatMessage[]; mod
   });
 }
 
-export async function generateDiaryDraft(input: { messages: ChatMessage[]; mode: EmotionModeId }): Promise<AiDraftResult> {
+export async function generateDiaryDraft(input: { aiDisplayName?: string; messages: ChatMessage[]; mode: EmotionModeId }): Promise<AiDraftResult> {
   const settings = await getAiSettingsPrivate().catch(() => null);
   if (!settings) throw new Error("AI 配置有问题：请先在设置中保存并测试 AI 配置。");
 
@@ -56,6 +57,7 @@ export async function generateDiaryDraft(input: { messages: ChatMessage[]; mode:
     messages: [
       { role: "system", content: commonSystemPrompt },
       { role: "system", content: modePrompts[input.mode] },
+      ...buildUserPreferencePrompt(input.aiDisplayName),
       { role: "system", content: diaryOutputPrompt },
       {
         role: "user",
@@ -232,15 +234,41 @@ function isKimiOrMoonshot(settings: { baseUrl: string; model: string }) {
   return baseUrl.includes("moonshot") || baseUrl.includes("kimi") || model.startsWith("kimi-") || model.startsWith("moonshot-");
 }
 
-function buildAssistantPromptMessages(input: { messages: ChatMessage[]; mode: EmotionModeId }) {
+function buildAssistantPromptMessages(input: { aiDisplayName?: string; companionMode?: CompanionMode; messages: ChatMessage[]; mode: EmotionModeId }) {
   return [
     { role: "system" as const, content: commonSystemPrompt },
     { role: "system" as const, content: modePrompts[input.mode] },
+    ...buildCompanionPrompt(input.companionMode),
+    ...buildUserPreferencePrompt(input.aiDisplayName),
     { role: "system" as const, content: followUpPrompt },
     ...input.messages.map((message) => ({
       role: message.role === "user" ? ("user" as const) : ("assistant" as const),
       content: message.content
     }))
+  ];
+}
+
+function buildCompanionPrompt(companionMode?: CompanionMode) {
+  if (!companionMode) return [];
+  const companion = companionModes[companionMode];
+
+  return [
+    {
+      role: "system" as const,
+      content: `本次用户选择的陪伴方式是「${companion.title}」：${companion.promptHint}`
+    }
+  ];
+}
+
+function buildUserPreferencePrompt(aiDisplayName?: string) {
+  const name = aiDisplayName?.trim();
+  if (!name) return [];
+
+  return [
+    {
+      role: "system" as const,
+      content: `用户希望你在自然需要称呼 TA 时使用这个名字：${name}。不要为了使用名字而反复称呼，只有在能增加温柔、确认感或过渡自然时再使用。`
+    }
   ];
 }
 

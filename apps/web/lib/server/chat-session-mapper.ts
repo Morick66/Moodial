@@ -1,5 +1,6 @@
 import type { ChatMessage, ChatSessionDetail, ChatSessionStatus, DiaryStructuredData, DraftDiary, EmotionModeId } from "@jzmle/core";
 import type { ChatMessage as PrismaChatMessage, ChatSession as PrismaChatSession, EmotionMode as PrismaEmotionMode, Prisma } from "@prisma/client";
+import { normalizeCompanionMode, type CompanionMode } from "@/lib/record-prefill";
 
 const modeFromPrisma: Record<PrismaEmotionMode, EmotionModeId> = {
   HAPPY: "happy",
@@ -43,14 +44,19 @@ export function toPrismaJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
-export function buildSessionState(input: { draft?: DraftDiary | null; source?: "ai" | "fallback"; structured?: Partial<DiaryStructuredData>; shouldSummarize?: boolean; userTurns: number }) {
+export function buildSessionState(input: { companionMode?: CompanionMode | null; draft?: DraftDiary | null; source?: "ai" | "fallback"; structured?: Partial<DiaryStructuredData>; shouldSummarize?: boolean; userTurns: number }) {
   return toPrismaJson({
+    companionMode: input.companionMode ?? null,
     draft: input.draft ?? null,
     source: input.source ?? "fallback",
     structured: input.structured ?? null,
     shouldSummarize: Boolean(input.shouldSummarize),
     userTurns: input.userTurns
   });
+}
+
+export function getSessionCompanionMode(session: PrismaChatSession) {
+  return normalizeState(session.stateJson).companionMode;
 }
 
 export function shouldSuggestSummarize(latestUserContent: string, userTurns: number) {
@@ -62,15 +68,17 @@ export function normalizeStatus(value: string): ChatSessionStatus {
   return "active";
 }
 
-function normalizeState(value: unknown): { draft: DraftDiary | null } {
+function normalizeState(value: unknown): { companionMode?: CompanionMode; draft: DraftDiary | null } {
   if (!value || typeof value !== "object") return { draft: null };
+  const companionMode = normalizeCompanionMode((value as { companionMode?: unknown }).companionMode);
   const draft = (value as { draft?: unknown }).draft;
 
-  if (!draft || typeof draft !== "object") return { draft: null };
+  if (!draft || typeof draft !== "object") return { companionMode, draft: null };
   const record = draft as Partial<DraftDiary>;
-  if (typeof record.diaryText !== "string" || typeof record.summary !== "string" || typeof record.title !== "string") return { draft: null };
+  if (typeof record.diaryText !== "string" || typeof record.summary !== "string" || typeof record.title !== "string") return { companionMode, draft: null };
 
   return {
+    companionMode,
     draft: {
       diaryText: record.diaryText,
       summary: record.summary,

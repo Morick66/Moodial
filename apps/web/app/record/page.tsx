@@ -1,10 +1,12 @@
 import { RecordWorkspace } from "@/components/pages/RecordWorkspace";
 import { requireAppAccess } from "@/lib/server/current-user";
+import { normalizeCompanionMode } from "@/lib/record-prefill";
+import { parseEmotionMode } from "@/lib/server/entry-mapper";
 
 export const dynamic = "force-dynamic";
 
-export default async function RecordPage({ searchParams }: { searchParams: Promise<{ session?: string }> }) {
+export default async function RecordPage({ searchParams }: { searchParams: Promise<{ companion?: string; mode?: string; session?: string }> }) {
   await requireAppAccess();
-  const { session } = await searchParams;
-  return <RecordWorkspace initialSessionId={session} />;
+  const { companion, mode, session } = await searchParams;
+  return <RecordWorkspace initialCompanionMode={normalizeCompanionMode(companion)} initialMode={parseEmotionMode(mode) ?? undefined} initialSessionId={session} />;
 }

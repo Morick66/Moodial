@@ -1,10 +1,17 @@
 import type { DiaryEntry, EntryDetail, EntryListItem, EntryWriteInput, EmotionModeId } from "@jzmle/core";
 import { emotionModes } from "@jzmle/core";
 
-export async function fetchEntries(params: { mode?: EmotionModeId | "all"; search?: string } = {}) {
+export type EntryTagOption = {
+  count: number;
+  tag: string;
+};
+
+export async function fetchEntries(params: { mode?: EmotionModeId | "all"; privacy?: "all" | "locked" | "normal"; search?: string; tag?: string } = {}) {
   const searchParams = new URLSearchParams();
   if (params.search) searchParams.set("search", params.search);
   if (params.mode && params.mode !== "all") searchParams.set("mode", params.mode);
+  if (params.privacy && params.privacy !== "all") searchParams.set("privacy", params.privacy);
+  if (params.tag) searchParams.set("tag", params.tag);
 
   const response = await fetch(`/api/entries${searchParams.size ? `?${searchParams.toString()}` : ""}`, {
     cache: "no-store"
@@ -12,6 +19,15 @@ export async function fetchEntries(params: { mode?: EmotionModeId | "all"; searc
   if (!response.ok) throw new Error("无法读取日记列表");
 
   return (await response.json()) as EntryListItem[];
+}
+
+export async function fetchEntryTags() {
+  const response = await fetch("/api/entries/tags", {
+    cache: "no-store"
+  });
+  if (!response.ok) throw new Error("无法读取标签");
+
+  return (await response.json()) as EntryTagOption[];
 }
 
 export async function fetchEntry(id: string) {

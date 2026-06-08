@@ -3,6 +3,11 @@ node_modules
 .next
 **/.next
 .git
+.DS_Store
+._*
+**/._*
+.AppleDouble
+**/.AppleDouble
 .env
 .env.*
 data
@@ -12,3 +17,4 @@ backups
 coverage
 dist
 build
+.tmp-*
